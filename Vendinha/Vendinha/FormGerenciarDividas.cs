@@ -1,14 +1,16 @@
-﻿using System;
+using System;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Windows.Forms;
-using Vendinha.Dados;
 using Vendinha.Dominio;
+using Vendinha.Services;
 
 namespace Vendinha
 {
     public partial class FormGerenciarDividas : Form
     {
-        private int _clienteId;
+        private readonly DividaService _dividaService = new();
+        private readonly int _clienteId;
 
         public FormGerenciarDividas(int clienteId, string nomeCliente)
         {
@@ -17,78 +19,85 @@ namespace Vendinha
             _clienteId = clienteId;
             lblCliente.Text = "Cliente: " + nomeCliente;
 
-            btnPendurar.Click += BtnPendurar_Click;
-            btnPagar.Click += BtnPagar_Click;
+            btnPendurar.Click      += BtnPendurar_Click;
+            btnPagar.Click         += BtnPagar_Click;
+            btnExcluirDivida.Click += BtnExcluirDivida_Click;
 
             CarregarDividas();
         }
 
         private void CarregarDividas()
         {
-            using var db = new VendinhaContext();
-
-            var lista = db.Dividas
-                .Where(d => d.ClienteId == _clienteId)
-                .Select(d => new
-                {
-                    d.Id,
-                    d.Valor,
-                    Paga = d.Paga ? "SIM" : "NÃO"
-                })
-                .ToList();
-
+            var lista = _dividaService.ListarPorCliente(_clienteId);
             dgvDividas.DataSource = lista;
 
-            if (dgvDividas.Columns["Id"] != null)
-                dgvDividas.Columns["Id"].Visible = false;
         }
 
         private void BtnPendurar_Click(object sender, EventArgs e)
         {
-            using var db = new VendinhaContext();
-
-            bool temDivida = db.Dividas
-                .Any(d => d.ClienteId == _clienteId && !d.Paga);
-
-            if (temDivida)
-            {
-                MessageBox.Show("Cliente já possui dívida em aberto!");
-                return;
-            }
-
             var divida = new Divida
             {
-                ClienteId = _clienteId,
-                Valor = numValor.Value,
-                Paga = false,
+                ClienteId   = _clienteId,
+                Valor       = numValor.Value,
+                Paga        = false,
                 DataCriacao = DateTime.Now
             };
 
-            db.Dividas.Add(divida);
-            db.SaveChanges();
+            var sucesso = _dividaService.Pendurar(divida, out var erros);
+            if (!sucesso)
+            {
+                var texto = string.Join("\n", erros.Select(err =>
+                {
+                    var prop = err.MemberNames.FirstOrDefault() ?? "Erro";
+                    return $"{prop}: {err.ErrorMessage}";
+                }));
+                MessageBox.Show(texto, "Dados inválidos",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
 
-            MessageBox.Show("Dívida adicionada!");
-
+            MessageBox.Show("Dívida registrada com sucesso!");
             CarregarDividas();
         }
+
         private void BtnPagar_Click(object sender, EventArgs e)
         {
             if (dgvDividas.CurrentRow == null) return;
 
             int id = (int)dgvDividas.CurrentRow.Cells["Id"].Value;
 
-            using var db = new VendinhaContext();
-
-            var divida = db.Dividas.Find(id);
-
-            if (divida != null)
+            var sucesso = _dividaService.Pagar(id, out var erros);
+            if (!sucesso)
             {
-                divida.Paga = true;
-                db.SaveChanges();
-
-                MessageBox.Show("Dívida paga!");
-                CarregarDividas();
+                MessageBox.Show(erros.First().ErrorMessage);
+                return;
             }
+
+            MessageBox.Show("Dívida marcada como paga!");
+            CarregarDividas();
+        }
+
+        private void BtnExcluirDivida_Click(object sender, EventArgs e)
+        {
+            if (dgvDividas.CurrentRow == null) return;
+
+            int id = (int)dgvDividas.CurrentRow.Cells["Id"].Value;
+
+            var confirmacao = MessageBox.Show(
+                "Excluir esta dívida?", "Confirmar",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+
+            if (confirmacao != DialogResult.Yes) return;
+
+            var sucesso = _dividaService.Excluir(id, out var erros);
+            if (!sucesso)
+            {
+                MessageBox.Show(erros.First().ErrorMessage);
+                return;
+            }
+
+            MessageBox.Show("Dívida excluída!");
+            CarregarDividas();
         }
     }
 }

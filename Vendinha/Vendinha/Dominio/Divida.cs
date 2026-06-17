@@ -1,15 +1,23 @@
-﻿namespace Vendinha.Dominio;
+using System;
+using System.ComponentModel.DataAnnotations;
 
-public class Divida
+namespace Vendinha.Dominio
 {
-    public int Id { get; set; }
+    public class Divida
+    {
+        public int Id { get; set; }
 
-    public int ClienteId { get; set; }
+        [Required(ErrorMessage = "O cliente é obrigatório.")]
+        public int ClienteId { get; set; }
 
-    public decimal Valor { get; set; }
-    public bool Paga { get; set; } = false;
-    public DateTime DataCriacao { get; set; } = DateTime.Now;
-    public DateTime? DataPagamento { get; set; }
+        [Range(0.01, 9999.99,
+            ErrorMessage = "O valor deve ser entre R$ 0,01 e R$ 9.999,99.")]
+        public decimal Valor { get; set; }
 
-    public Cliente? Cliente { get; set; }
+        public bool Paga { get; set; } = false;
+        public DateTime DataCriacao { get; set; } = DateTime.Now;
+        public DateTime? DataPagamento { get; set; }
+
+        public Cliente? Cliente { get; set; }
+    }
 }

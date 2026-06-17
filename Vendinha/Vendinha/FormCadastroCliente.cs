@@ -1,12 +1,15 @@
-﻿using System;
+using System;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Windows.Forms;
-using Vendinha.Dados;
 using Vendinha.Dominio;
+using Vendinha.Services;
+
 namespace Vendinha
 {
     public partial class FormCadastroCliente : Form
     {
+        private readonly ClienteService _clienteService = new();
         private int? _clienteIdEdicao;
 
         public FormCadastroCliente()
@@ -23,65 +26,51 @@ namespace Vendinha
 
         private void Carregar()
         {
-            using var db = new VendinhaContext();
-            var c = db.Clientes.Find(_clienteIdEdicao);
-
+            var c = _clienteService.BuscarPorId(_clienteIdEdicao!.Value);
             if (c == null) return;
 
-            txtNome.Text = c.NomeCompleto;
-            txtCpf.Text = c.Cpf;
-            txtCpf.ReadOnly = true;
+            txtNome.Text            = c.NomeCompleto;
+            txtCpf.Text             = c.Cpf;
+            txtCpf.ReadOnly         = true;
             dtpDataNascimento.Value = c.DataNascimento;
-            txtEmail.Text = c.Email;
+            txtEmail.Text           = c.Email;
         }
 
         private void BtnSalvar_Click(object sender, EventArgs e)
         {
-            var nome = txtNome.Text;
-            var cpf = txtCpf.Text.Replace(".", "").Replace("-", "");
-            var email = txtEmail.Text;
-
-            if (nome == "" || cpf == "" || email == "")
+            var cliente = new Cliente
             {
-                MessageBox.Show("Preencha tudo!");
+                Id              = _clienteIdEdicao ?? 0,
+                NomeCompleto    = txtNome.Text,
+                Cpf             = txtCpf.Text,
+                Email           = txtEmail.Text,
+                DataNascimento  = dtpDataNascimento.Value
+            };
+
+            bool sucesso;
+            List<ValidationResult> erros;
+
+            if (_clienteIdEdicao == null)
+                sucesso = _clienteService.Cadastrar(cliente, out erros);
+            else
+                sucesso = _clienteService.Atualizar(cliente, out erros);
+
+            if (!sucesso)
+            {
+                var texto = string.Join("\n", erros.Select(err =>
+                {
+                    var prop = err.MemberNames.FirstOrDefault() ?? "Erro";
+                    return $"{prop}: {err.ErrorMessage}";
+                }));
+                MessageBox.Show(texto, "Dados inválidos",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            using var db = new VendinhaContext();
+            MessageBox.Show(_clienteIdEdicao == null
+                ? "Cliente cadastrado com sucesso!"
+                : "Cliente atualizado com sucesso!");
 
-            if (_clienteIdEdicao == null)
-            {
-                if (db.Clientes.Any(c => c.Cpf == cpf))
-                {
-                    MessageBox.Show("CPF já existe!");
-                    return;
-                }
-
-                db.Clientes.Add(new Cliente
-                {
-                    NomeCompleto = nome,
-                    Cpf = cpf,
-                    DataNascimento = dtpDataNascimento.Value,
-                    Email = email
-                });
-
-                MessageBox.Show("Cadastrado!");
-            }
-            else
-            {
-                var c = db.Clientes.Find(_clienteIdEdicao);
-                if (c == null) return;
-
-                c.NomeCompleto = nome;
-                c.Email = email;
-                c.DataNascimento = dtpDataNascimento.Value;
-
-                db.Clientes.Update(c);
-
-                MessageBox.Show("Atualizado!");
-            }
-
-            db.SaveChanges();
             DialogResult = DialogResult.OK;
             Close();
         }
